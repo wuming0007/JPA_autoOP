@@ -1,0 +1,36 @@
+# JPA自动工作点寻找与优化系统依赖包
+# Python >= 3.8 required
+
+# 核心科学计算库
+numpy>=1.20.0
+scipy>=1.7.0
+matplotlib>=3.3.0
+
+# 数据处理和可视化
+pandas>=1.3.0
+seaborn>=0.11.0
+
+# 进度条和用户界面
+tqdm>=4.60.0
+ipywidgets>=7.6.0
+
+# 优化算法
+nevergrad>=0.4.0
+
+# Jupyter支持
+jupyter>=1.0.0
+jupyterlab>=3.0.0
+notebook>=6.0.0
+
+# 量子实验相关（需要从内部源安装）
+# quark-app  # 设备控制框架
+# qulab      # 量子实验工具包
+
+# 可选：LaTeX报告生成支持
+# texlive     # LaTeX发行版（系统安装）
+# pandoc      # 文档转换工具（系统安装）
+
+# 开发和测试工具（可选）
+pytest>=6.0.0
+black>=21.0.0
+flake8>=3.8.0 
