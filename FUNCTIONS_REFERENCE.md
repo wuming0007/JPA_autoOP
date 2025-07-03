@@ -4,6 +4,7 @@
 
 ## 📚 目录
 
+- [JPA器件调节原理](#JPA器件调节原理)
 - [核心工具函数](#核心工具函数)
 - [设备控制函数](#设备控制函数)
 - [数据处理函数](#数据处理函数)
@@ -13,32 +14,32 @@
 
 ---
 
+## JPA器件调节原理
+
+一般情况下约瑟夫森参量放大器的可调节信号大概包括：
+|参量名称|信号特征|信号行为|施加方式|
+|:-:|:-:|:-:|:-:|
+|MW_frequency|微波激励的频率|一般使用JPA频率的2倍频来进行泵浦，JPA一般设计在$7$ GHz附近，泵浦频率一般在$14$ GHz左右，且受到JPA偏置的影响|1. 微波源驱动，对应微波源的频率    2. DDS脉冲驱动，对应驱动脉冲的频率|
+|MW_power|微波激励的功率|JPA的泵浦功率需要在合适的范围，才能让JPA工作，适合的功率可能有好几种状态|1. 微波源驱动，对应微波源输出的幅度    2. DDS脉冲驱动，对应驱动脉冲的振幅|
+|DC_bias|直流偏置信号的电压|一般呈现出周期性的行为，会影响到JPA泵浦的频率|一般由直流源的偏移量（Offset）来给出|
+
+因此，JPA的调节是一个典型的多参数联合调节的问题。对于多参数联合调节的问题，一般有两种通用思路：
+- 多参数逐个扫描
+  实际上是一定精度范围内枚举了可能的参数组合，通过JPA的性能评估函数或损失函数来选择较优范围。
+- 多参数联合优化
+  以迭代-反馈方式进行参数扫描，类似经典算法优化中的求极值优化问题，同样需要一个JPA性能评估函数或者损失函数。
+
+那么如何来构建JPA性能评估函数或者是损失函数？构建方法是多样的，这里给出三个示例：
+- JPA已经加入到含有比特的传输线中，且此时比特已经能做态的区分（`Scatter`）
+  直接利用`Scatter`实验中比特态的iq信息，利用SVM算法中的多态的`visbility`作为性能评估。实际操作就是改变JPA可调节的三个参数，测量比特的`Scatter`实验，通过两团点甚至多团点分开的情况来选择合适的JPA工作参数。
+- JPA没有加入到含有比特的传输线中
+  此时没有比特信息作为参考，需要更广泛通用的评估方式。一般通过信号频率$\omega$在一定范围内的$S_{21}(\omega)$响应来判断。例如构建的损失函数是
+$$f=\sum_\omega 20\log_{10}\left|\frac{{\rm Avg}[S_{21}(\omega)]}{{\rm Std}[S_{21}(\omega)]}\right|,$$
+  此时平均（${\rm Avg}）$和标准差（${\rm Std}$）来自于一定次数的重复测量。这种方式构建的损失函数兼顾了信号的大小和信号的涨落。还可以减去一个额外的背景，例如采集一下在JPA不泵浦时的损失函数，通过JPA对损失函数的增益贡献来评价更好的JPA性能。
+- JPA已经加入到含有比特的传输线中，但此时比特还不能做态的区分，但已经知道读取腔的频率
+  此时损失函数可以考虑读取腔的特性，仅在读取腔频率附近来考虑评估函数。
+
 ## 核心工具函数
-
-### `extent(A, B)`
-
-**功能**: 计算二维数据的边界范围，用于matplotlib的imshow等函数
-
-**参数**:
-- `A`: numpy数组，x轴数据范围
-- `B`: numpy数组，y轴数据范围
-
-**返回**: 
-- tuple: `(xmin, xmax, ymin, ymax)` 用于设置图像边界
-
-**使用示例**:
-```python
-x = np.linspace(0, 10, 11)
-y = np.linspace(0, 5, 6)
-ext = extent(x, y)
-plt.imshow(data, extent=ext)
-```
-
-**应用场景**: 
-- 生成二维扫描图
-- 设置colormap的坐标范围
-
----
 
 ### `server_read(channel)`
 
@@ -66,12 +67,15 @@ s_data = server_read('na_103_220.CH1.S')
 - 获取设备当前状态
 - 读取测量数据
 - 监控设备参数
+  
+**注意事项**:
+- 根据quark的版本不同，具体的实现方式可能略有差异。但这其实就是读设备的命令。
 
 ---
 
 ### `slowly_change(ed, st=None, per=0.01, channel='DC.CH1.Offset', write=False, slow=True, time_out=0.05, **kw)`
 
-**功能**: 缓慢改变设备参数，避免突变对设备造成损害
+**功能**: 缓慢改变设备参数，避免突变对设备/JPA状态造成损害
 
 **参数**:
 - `ed`: 目标值
@@ -96,8 +100,11 @@ slowly_change(5e9, channel='mw_126_22.CH1.Frequency', write=False)
 
 **应用场景**:
 - 安全调整敏感参数
-- 避免设备损坏
+- 避免设备损坏或者JPA敏感突变
 - 参数扫描和优化
+  
+**注意事项**:
+- 同样地，根据quark的版本不同，具体的实现方式可能略有差异。这就是写设备的命令。
 
 ---
 
@@ -192,6 +199,31 @@ plt.ylabel('|S21| (dB)')
 
 ## 可视化函数
 
+### `extent(A, B)`
+
+**功能**: 计算二维数据的边界范围，用于matplotlib的imshow等函数
+
+**参数**:
+- `A`: numpy数组，x轴数据范围
+- `B`: numpy数组，y轴数据范围
+
+**返回**: 
+- tuple: `(xmin, xmax, ymin, ymax)` 用于设置图像边界
+
+**使用示例**:
+```python
+x = np.linspace(0, 10, 11)
+y = np.linspace(0, 5, 6)
+ext = extent(x, y)
+plt.imshow(data, extent=ext)
+```
+
+**应用场景**: 
+- 生成二维扫描图
+- 设置colormap的坐标范围
+
+---
+
 ### `draw_JPA_text_circuit()`
 
 **功能**: 绘制JPA测试电路的示意图
@@ -255,7 +287,7 @@ variables = [
 optimizer = NgOpt(variables, {'method': 'TwoPointsDE', 'config': {'budget': 20}})
 ```
 
-#### 优化循环结构
+#### 优化循环结构的伪代码
 
 ```python
 # 标准优化循环
@@ -303,14 +335,17 @@ with open(f"{jpa_name}_report.tex", 'w') as f:
 
 # 编译PDF（需要LaTeX环境）
 import subprocess
-subprocess.run(['pdflatex', f"{jpa_name}_report.tex"])
+subprocess.run(['xelatex', f"{jpa_name}_report.tex"])
+# 更建议使用Overleaf进行云编译，省去了配置tex文件编译环境的麻烦
+# 使用Overleaf进行编译时，注意选择编译器为xeLatex
+# 在打开的Project页面中，左上角的Menu菜单，点开可选择编译器（Setting-Compiler）
 ```
 
 ---
 
 ## 高级功能函数
 
-### 损失函数设计
+### 损失函数设计实例
 
 系统使用加权SNR作为优化目标：
 
@@ -318,7 +353,7 @@ subprocess.run(['pdflatex', f"{jpa_name}_report.tex"])
 # 计算SNR
 SNR = 20*np.log10(np.abs(s_pump_on.mean()/s_pump_on.std()))
 
-# 应用频率权重
+# 应用频率权重，frequency_weight_function根据用户需求自定义
 weighted_SNR = SNR @ frequency_weight_function(frequencies)
 
 # 最终损失（注意：优化器最小化，所以用负值）
@@ -345,37 +380,45 @@ def gaussian_weight(f, center=7e9, sigma=0.5e9):
 
 ## 错误处理和调试
 
-### 常用调试函数
+### 仪器状态检查
+
+仪器的链接通过`quark`进行。需要在当前`quark`工作的`config`中的`dev`字段添加JPA测量使用到的设备。一个设备配置参考字典如下：
 
 ```python
-def check_device_status():
-    """检查所有设备的连接状态"""
-    devices = ['na_103_220.CH1', 'mw_126_22.CH1', 'Rigol_199_222.CH1']
-    for device in devices:
-        try:
-            status = server_read(f"{device}.Status")
-            print(f"{device}: OK ({status})")
-        except Exception as e:
-            print(f"{device}: ERROR - {e}")
-
-def validate_measurement(s_data):
-    """验证测量数据的有效性"""
-    if np.any(np.isnan(s_data)):
-        raise ValueError("测量数据包含NaN值")
-    if np.any(np.isinf(s_data)):
-        raise ValueError("测量数据包含无穷大值")
-    if s_data.shape[0] == 0:
-        raise ValueError("测量数据为空")
-    print(f"数据验证通过：{s_data.shape[0]}次测量，{s_data.shape[1]}个频率点")
+{
+    'dev': {
+        'NA': {
+            'addr': '192.168.103.220',
+            'name': 'NetworkAnalyzer', # 请确认网分型号,
+            'type': 'driver',
+            'model': '3674C',
+            'srate': 0,
+            'inuse': True,
+        },
+        'MW': {
+            'addr': '192.168.126.22',
+            'name': 'PSG', # 请保证MW设备的driver是正常工作的
+            'type': 'driver',
+            'srate': 0,
+            'inuse': True,
+        },
+        'DC': {
+            'addr': '192.168.199.222',
+            'name': 'RigolAWG', # 请保证DC设备的driver是正常工作的
+            'type': 'driver',
+            'srate': 0,
+            'inuse': True,
+        }
+    }
+}
 ```
 
 ---
 
 ## 性能优化建议
 
-### 1. 测量速度优化
 ```python
-# 并行测量多个参数
+# 并行测量多个参数，同时使用多台网分测量优化
 def quick_measurement(channels, repeats=10):
     results = {}
     for channel in channels:
@@ -393,24 +436,5 @@ def adaptive_measurement(channel, target_snr=30):
         repeats += 10
     return data
 ```
-
-### 2. 内存优化
-```python
-# 流式数据处理
-def streaming_measurement(channel, total_repeats, batch_size=20):
-    results = []
-    for i in range(0, total_repeats, batch_size):
-        batch_data = get_repeat_s(channel, 
-                                min(batch_size, total_repeats-i), 
-                                bar=False)
-        # 处理批次数据
-        batch_mean = batch_data.mean(axis=0)
-        results.append(batch_mean)
-        # 清理内存
-        del batch_data
-    return np.array(results)
-```
-
----
 
 *需要更多技术细节？查看源代码或联系开发团队。* 
